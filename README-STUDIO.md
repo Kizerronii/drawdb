@@ -7,8 +7,8 @@ Ten fork **zachowuje pełną synchronizację z upstream** — modyfikacje są w 
 ## Instalacja (jednorazowo na maszynie)
 
 ```bash
-git clone https://github.com/Kizerronii/drawdb.git ~/tools/drawdb
-cd ~/tools/drawdb
+git clone https://github.com/Kizerronii/drawdb.git ~/workbench/dev/drawdb
+cd ~/workbench/dev/drawdb
 git remote add upstream https://github.com/drawdb-io/drawdb.git  # dla 'drawdb update'
 ./install.sh
 ```
@@ -62,7 +62,7 @@ Fork pozwala na lokalne modyfikacje kodu drawdb (skróty klawiszowe, UI, itp.):
 ## Struktura forka
 
 ```
-~/tools/drawdb/
+~/workbench/dev/drawdb/
 ├── bin/drawdb              # CLI wrapper
 ├── compose-studio.yml      # Docker Compose (prod + dev profile)
 ├── install.sh              # symlink do ~/.local/bin/drawdb

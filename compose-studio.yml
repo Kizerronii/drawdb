@@ -1,0 +1,29 @@
+# Konfiguracja dla nadbudowy "studio" nad drawdb.
+# Używana przez ~/.local/bin/drawdb (CLI wrapper).
+# Nie nadpisuje upstream compose.yml — współistnieje obok.
+services:
+  # Produkcja: nginx serwuje statyczny build drawdb na porcie 3000.
+  # Uruchomienie: drawdb up
+  drawdb:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: drawdb
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+
+  # Dev mode: vite dev server z hot-reload na porcie 5173.
+  # Uruchomienie: drawdb dev
+  # Zmiany w src/ widoczne na żywo.
+  drawdb-dev:
+    image: node:20-alpine
+    container_name: drawdb-dev
+    working_dir: /app
+    volumes:
+      - ./:/app
+    command: sh -c "npm install && npm run dev -- --host"
+    ports:
+      - "5173:5173"
+    profiles:
+      - dev

@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+# drawdb — CLI do zarządzania lokalną instancją drawdb (studio wrapper).
+# Instalacja: ./install.sh (w katalogu ~/tools/drawdb).
+set -euo pipefail
+
+SCRIPT_PATH="$(readlink -f "$0")"
+TOOL_DIR="$(dirname "$(dirname "$SCRIPT_PATH")")"
+COMPOSE_FILE="$TOOL_DIR/compose-studio.yml"
+
+if [[ ! -f "$COMPOSE_FILE" ]]; then
+    echo "Błąd: nie znaleziono $COMPOSE_FILE" >&2
+    exit 1
+fi
+
+COMPOSE=(docker compose -f "$COMPOSE_FILE")
+
+PORT_PROD=3000
+PORT_DEV=5173
+URL_PROD="http://localhost:$PORT_PROD"
+URL_DEV="http://localhost:$PORT_DEV"
+
+_running() {
+    docker ps --filter "name=^${1}\$" --filter status=running --format '{{.Names}}' | grep -q "^${1}\$"
+}
+
+cmd_up() {
+    echo "→ Uruchamianie drawdb (prod, port $PORT_PROD)..."
+    "${COMPOSE[@]}" up -d drawdb
+    echo "   $URL_PROD"
+}
+
+cmd_dev() {
+    echo "→ Uruchamianie drawdb (dev, port $PORT_DEV, hot-reload)..."
+    "${COMPOSE[@]}" --profile dev up -d drawdb-dev
+    echo "   $URL_DEV"
+}
+
+cmd_down() {
+    echo "→ Zatrzymywanie drawdb..."
+    "${COMPOSE[@]}" --profile dev down
+}
+
+cmd_restart() {
+    local mode="${1:-prod}"
+    cmd_down
+    if [[ "$mode" == "dev" ]]; then
+        cmd_dev
+    else
+        cmd_up
+    fi
+}
+
+cmd_status() {
+    local found=0
+    for name in drawdb drawdb-dev; do
+        if _running "$name"; then
+            docker ps --filter "name=^${name}\$" --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+            found=1
+        fi
+    done
+    if [[ $found -eq 0 ]]; then
+        echo "drawdb nie jest uruchomiony. Użyj: drawdb up"
+    fi
+}
+
+cmd_logs() {
+    "${COMPOSE[@]}" --profile dev logs "$@"
+}
+
+cmd_rebuild() {
+    echo "→ Rebuild obrazu drawdb (--no-cache)..."
+    "${COMPOSE[@]}" build --no-cache drawdb
+    cmd_down
+    cmd_up
+}
+
+cmd_update() {
+    echo "→ Pobieranie zmian z upstream drawdb-io/drawdb..."
+    cd "$TOOL_DIR"
+    if ! git remote get-url upstream >/dev/null 2>&1; then
+        echo "Błąd: brak remote 'upstream' w $TOOL_DIR" >&2
+        echo "Dodaj: git -C $TOOL_DIR remote add upstream https://github.com/drawdb-io/drawdb.git" >&2
+        exit 1
+    fi
+    git fetch upstream
+    local branch
+    branch="$(git rev-parse --abbrev-ref HEAD)"
+    echo "→ Merge upstream/main do lokalnego $branch..."
+    git merge upstream/main
+    cmd_rebuild
+}
+
+cmd_open() {
+    if _running drawdb; then
+        xdg-open "$URL_PROD" >/dev/null 2>&1
+    elif _running drawdb-dev; then
+        xdg-open "$URL_DEV" >/dev/null 2>&1
+    else
+        echo "drawdb nie jest uruchomiony. Użyj: drawdb up" >&2
+        exit 1
+    fi
+}
+
+cmd_sh() {
+    local name="${1:-drawdb}"
+    if ! _running "$name"; then
+        echo "Kontener '$name' nie działa." >&2
+        exit 1
+    fi
+    docker exec -it "$name" sh
+}
+
+cmd_help() {
+    cat <<EOF
+drawdb — CLI do zarządzania lokalną instancją drawdb (studio)
+
+Użycie: drawdb <komenda> [args]
+
+Komendy:
+  up                 Uruchom drawdb (prod, port $PORT_PROD)
+  dev                Uruchom drawdb (dev, port $PORT_DEV, hot-reload)
+  down               Zatrzymaj drawdb (prod i dev)
+  restart [dev]      Restart (domyślnie prod, 'dev' uruchamia dev mode)
+  status             Status kontenerów
+  logs [flagi]       Logi (przekazuje flagi do 'docker compose logs', np. -f)
+  rebuild            Pełny rebuild obrazu (--no-cache) + restart
+  update             Fetch + merge upstream/main + rebuild
+  open               Otwórz drawdb w przeglądarce (auto-detect prod/dev)
+  sh [name]          Shell w kontenerze (domyślnie 'drawdb', lub 'drawdb-dev')
+  help               Ta pomoc
+
+Tool dir:     $TOOL_DIR
+Compose file: $COMPOSE_FILE
+EOF
+}
+
+case "${1:-help}" in
+    up|dev|down|status|open|help|sh) cmd_"$1" "${@:2}" ;;
+    restart) cmd_restart "${2:-prod}" ;;
+    logs)    cmd_logs "${@:2}" ;;
+    rebuild) cmd_rebuild ;;
+    update)  cmd_update ;;
+    *)
+        echo "Nieznana komenda: $1" >&2
+        echo "" >&2
+        cmd_help >&2
+        exit 1
+        ;;
+esac

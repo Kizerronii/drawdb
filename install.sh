@@ -19,6 +19,12 @@ fi
 ln -sf "$BIN_SRC" "$BIN_DST"
 echo "✓ Zainstalowane: $BIN_DST → $BIN_SRC"
 
+WORKSPACE="${DRAWDB_WORKSPACE:-$HOME/drawdb-projects}"
+if [[ ! -d "$WORKSPACE" ]]; then
+    mkdir -p "$WORKSPACE"
+    echo "✓ Utworzono workspace projektów: $WORKSPACE"
+fi
+
 if ! command -v drawdb >/dev/null 2>&1; then
     echo ""
     echo "Uwaga: 'drawdb' nie jest w PATH. Dodaj $HOME/.local/bin do PATH w ~/.bashrc lub ~/.zshrc:"

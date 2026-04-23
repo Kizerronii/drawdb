@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # drawdb — CLI do zarządzania lokalną instancją drawdb (studio wrapper).
-# Instalacja: ./install.sh (w katalogu ~/tools/drawdb).
+# Instalacja: ./install.sh
 set -euo pipefail
 
 SCRIPT_PATH="$(readlink -f "$0")"
@@ -16,23 +16,51 @@ COMPOSE=(docker compose -f "$COMPOSE_FILE")
 
 PORT_PROD=3000
 PORT_DEV=5173
+PORT_API=3001
 URL_PROD="http://localhost:$PORT_PROD"
 URL_DEV="http://localhost:$PORT_DEV"
+URL_API="http://localhost:$PORT_API"
+
+WORKSPACE="${DRAWDB_WORKSPACE:-$HOME/drawdb-projects}"
 
 _running() {
     docker ps --filter "name=^${1}\$" --filter status=running --format '{{.Names}}' | grep -q "^${1}\$"
 }
 
+_ensure_workspace() {
+    if [[ ! -d "$WORKSPACE" ]]; then
+        echo "→ Tworzenie workspace: $WORKSPACE"
+        mkdir -p "$WORKSPACE"
+    fi
+}
+
+_wait_for() {
+    local url="$1" name="$2"
+    local i
+    for i in {1..40}; do
+        if curl -sf "$url" >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 0.25
+    done
+    echo "Ostrzeżenie: $name nie odpowiada na $url po ~10s" >&2
+    return 1
+}
+
 cmd_up() {
-    echo "→ Uruchamianie drawdb (prod, port $PORT_PROD)..."
-    "${COMPOSE[@]}" up -d drawdb
+    _ensure_workspace
+    echo "→ Uruchamianie drawdb (prod, port $PORT_PROD) + api (port $PORT_API)..."
+    "${COMPOSE[@]}" up -d drawdb drawdb-api
     echo "   $URL_PROD"
+    echo "   $URL_API/api/health"
 }
 
 cmd_dev() {
-    echo "→ Uruchamianie drawdb (dev, port $PORT_DEV, hot-reload)..."
-    "${COMPOSE[@]}" --profile dev up -d drawdb-dev
+    _ensure_workspace
+    echo "→ Uruchamianie drawdb (dev, port $PORT_DEV, hot-reload) + api (port $PORT_API)..."
+    "${COMPOSE[@]}" --profile dev up -d drawdb-dev drawdb-api
     echo "   $URL_DEV"
+    echo "   $URL_API/api/health"
 }
 
 cmd_down() {
@@ -52,7 +80,7 @@ cmd_restart() {
 
 cmd_status() {
     local found=0
-    for name in drawdb drawdb-dev; do
+    for name in drawdb drawdb-dev drawdb-api; do
         if _running "$name"; then
             docker ps --filter "name=^${name}\$" --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
             found=1
@@ -68,8 +96,8 @@ cmd_logs() {
 }
 
 cmd_rebuild() {
-    echo "→ Rebuild obrazu drawdb (--no-cache)..."
-    "${COMPOSE[@]}" build --no-cache drawdb
+    echo "→ Rebuild obrazów (--no-cache) drawdb + drawdb-api..."
+    "${COMPOSE[@]}" build --no-cache drawdb drawdb-api
     cmd_down
     cmd_up
 }
@@ -101,6 +129,61 @@ cmd_open() {
     fi
 }
 
+# Otwiera drawdb w Chromium app mode (okno bez UI przeglądarki, jak natywna apka).
+# Auto-startuje kontenery jeśli nie działają. setsid + disown odpina proces od terminala —
+# możesz zamknąć terminal i drawdb żyje dalej.
+cmd_launch() {
+    # parsing: pierwsza pozycja może być 'dev' lub flag (--keep-terminal). Default = prod.
+    local mode="prod"
+    if [[ "${1:-}" == "dev" ]]; then
+        mode="dev"
+    fi
+    local url
+
+    if [[ "$mode" == "dev" ]]; then
+        if ! _running drawdb-dev; then cmd_dev; fi
+        url="$URL_DEV"
+    else
+        if ! _running drawdb; then cmd_up; fi
+        url="$URL_PROD"
+    fi
+
+    _wait_for "$url" "drawdb ($mode)" || true
+
+    if ! command -v chromium >/dev/null 2>&1; then
+        echo "Brak chromium. Zainstaluj: sudo pacman -S chromium" >&2
+        echo "Fallback do xdg-open: $url" >&2
+        xdg-open "$url"
+        return 0
+    fi
+
+    echo "→ Uruchamianie drawdb w Chromium app mode ($url)..."
+    setsid chromium \
+        --app="$url" \
+        --new-window \
+        --class="drawdb-studio" \
+        --user-data-dir="$HOME/.local/share/drawdb-studio/chromium-profile" \
+        >/dev/null 2>&1 < /dev/null &
+    disown
+    echo "   Window class: drawdb-studio (target dla Hyprland window rules)"
+
+    # Domyślnie zamykamy okno terminala (efekt "podmianki" terminal → drawdb).
+    # Wyłącz: drawdb launch [dev] --keep-terminal  lub  KEEP_TERMINAL=1 drawdb launch
+    local keep_terminal=0
+    for arg in "$@"; do
+        [[ "$arg" == "--keep-terminal" ]] && keep_terminal=1
+    done
+    if [[ $keep_terminal -eq 1 || "${KEEP_TERMINAL:-}" == "1" ]]; then
+        return 0
+    fi
+    sleep 0.3  # daj chromium chwilę na fork — żeby tiling miał gdzie wstawić nowe okno
+    if command -v hyprctl >/dev/null 2>&1; then
+        hyprctl dispatch killactive >/dev/null 2>&1 || true
+    elif command -v xdotool >/dev/null 2>&1; then
+        xdotool getactivewindow windowclose 2>/dev/null || true
+    fi
+}
+
 cmd_sh() {
     local name="${1:-drawdb}"
     if ! _running "$name"; then
@@ -117,26 +200,31 @@ drawdb — CLI do zarządzania lokalną instancją drawdb (studio)
 Użycie: drawdb <komenda> [args]
 
 Komendy:
-  up                 Uruchom drawdb (prod, port $PORT_PROD)
-  dev                Uruchom drawdb (dev, port $PORT_DEV, hot-reload)
-  down               Zatrzymaj drawdb (prod i dev)
+  up                 Uruchom drawdb (prod, port $PORT_PROD) + api (port $PORT_API)
+  dev                Uruchom drawdb (dev, port $PORT_DEV, hot-reload) + api (port $PORT_API)
+  down               Zatrzymaj drawdb (wszystkie kontenery)
   restart [dev]      Restart (domyślnie prod, 'dev' uruchamia dev mode)
-  status             Status kontenerów
+  launch [dev] [--keep-terminal]
+                     Uruchom drawdb w Chromium app mode (bez UI przeglądarki) +
+                     zamknij okno terminala (efekt "podmianki"). --keep-terminal pomija zamknięcie.
+  status             Status kontenerów (drawdb, drawdb-dev, drawdb-api)
   logs [flagi]       Logi (przekazuje flagi do 'docker compose logs', np. -f)
-  rebuild            Pełny rebuild obrazu (--no-cache) + restart
+  rebuild            Pełny rebuild obrazów (--no-cache) + restart
   update             Fetch + merge upstream/main + rebuild
-  open               Otwórz drawdb w przeglądarce (auto-detect prod/dev)
-  sh [name]          Shell w kontenerze (domyślnie 'drawdb', lub 'drawdb-dev')
+  open               Otwórz drawdb w przeglądarce (xdg-open, auto-detect prod/dev)
+  sh [name]          Shell w kontenerze (drawdb | drawdb-dev | drawdb-api)
   help               Ta pomoc
 
-Tool dir:     $TOOL_DIR
-Compose file: $COMPOSE_FILE
+Workspace projektów:  $WORKSPACE
+Tool dir:             $TOOL_DIR
+Compose file:         $COMPOSE_FILE
 EOF
 }
 
 case "${1:-help}" in
     up|dev|down|status|open|help|sh) cmd_"$1" "${@:2}" ;;
     restart) cmd_restart "${2:-prod}" ;;
+    launch)  cmd_launch "${@:2}" ;;
     logs)    cmd_logs "${@:2}" ;;
     rebuild) cmd_rebuild ;;
     update)  cmd_update ;;

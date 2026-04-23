@@ -24,3 +24,13 @@ db.version(67)
 db.on("populate", (transaction) => {
   transaction.templates.bulkAdd(templateSeeds).catch((e) => console.log(e));
 });
+
+// === STUDIO MODE === (poza upstream — patrz studio/api, src/studio/)
+// Zastępuje db.diagrams HTTP-backed adapterem nad ~/drawdb-projects/*.drawdb.json.
+// db.templates zostaje w Dexie (statyczne seedy).
+// Statyczny import: gdy VITE_STUDIO_MODE !== 'true', Vite tree-shake'uje całość
+// (define inlines flag → if(false) → dead code elimination).
+import { makeDiagramsAdapter } from "../studio/storage-adapter";
+if (import.meta.env.VITE_STUDIO_MODE === "true") {
+  db.diagrams = makeDiagramsAdapter();
+}

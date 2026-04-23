@@ -3,27 +3,49 @@
 # Nie nadpisuje upstream compose.yml — współistnieje obok.
 services:
   # Produkcja: nginx serwuje statyczny build drawdb na porcie 3000.
+  # Studio mode: build używa studio/Dockerfile.studio (wrapper nad upstream Dockerfile + ENV).
   # Uruchomienie: drawdb up
   drawdb:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: studio/Dockerfile.studio
     container_name: drawdb
     restart: unless-stopped
     ports:
       - "3000:80"
+    depends_on:
+      - drawdb-api
 
   # Dev mode: vite dev server z hot-reload na porcie 5173.
   # Uruchomienie: drawdb dev
-  # Zmiany w src/ widoczne na żywo.
+  # Zmiany w src/ widoczne na żywo. Mode=studio ładuje .env.studio (VITE_STUDIO_MODE=true).
   drawdb-dev:
     image: node:20-alpine
     container_name: drawdb-dev
     working_dir: /app
     volumes:
       - ./:/app
-    command: sh -c "npm install && npm run dev -- --host"
+    command: sh -c "npm install && npm run dev -- --host --mode studio"
     ports:
       - "5173:5173"
     profiles:
       - dev
+    depends_on:
+      - drawdb-api
+
+  # Backend filesystem storage — REST + SSE nad ~/drawdb-projects/*.drawdb.json.
+  # Uruchamia się automatycznie przy 'drawdb up' i 'drawdb dev'.
+  drawdb-api:
+    build:
+      context: ./studio/api
+      dockerfile: Dockerfile
+    container_name: drawdb-api
+    restart: unless-stopped
+    volumes:
+      - ${HOME}/drawdb-projects:/workspace
+    environment:
+      STUDIO_WORKSPACE: /workspace
+      CORS_ORIGIN: "http://localhost:3000,http://localhost:5173"
+      LOG_LEVEL: info
+    ports:
+      - "3001:3001"

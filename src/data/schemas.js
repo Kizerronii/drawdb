@@ -162,6 +162,7 @@ export const jsonSchema = {
           updateConstraint: { type: "string" },
           deleteConstraint: { type: "string" },
           id: { type: ["integer", "string"] },
+          labelSide: { type: "string", enum: ["start", "end"] },
         },
         required: [
           "startTableId",

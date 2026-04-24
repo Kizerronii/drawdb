@@ -241,6 +241,7 @@ const en = {
     share_info:
       "* Sharing this link will not create a live real-time collaboration session.",
     show_relationship_labels: "Show relationship labels",
+    show_label_at_end_table: "Show label at end-table side",
     docs: "Docs",
     supported_types: "Supported file types:",
     bulk_update: "Bulk update",

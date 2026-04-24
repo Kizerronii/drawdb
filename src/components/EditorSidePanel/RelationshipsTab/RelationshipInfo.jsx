@@ -6,6 +6,7 @@ import {
   Popover,
   Table,
   Input,
+  Checkbox,
 } from "@douyinfe/semi-ui";
 import {
   IconDeleteStroked,
@@ -117,6 +118,27 @@ export default function RelationshipInfo({ data }) {
     ]);
     setRedoStack([]);
     updateRelationship(data.id, { cardinality: value });
+  };
+
+  const changeLabelSide = (value) => {
+    if (layout.readOnly) return;
+
+    setUndoStack((prev) => [
+      ...prev,
+      {
+        action: Action.EDIT,
+        element: ObjectType.RELATIONSHIP,
+        rid: data.id,
+        undo: { labelSide: data.labelSide },
+        redo: { labelSide: value },
+        message: t("edit_relationship", {
+          refName: data.name,
+          extra: "[labelSide]",
+        }),
+      },
+    ]);
+    setRedoStack([]);
+    updateRelationship(data.id, { labelSide: value });
   };
 
   const changeConstraint = (key, value) => {
@@ -264,6 +286,16 @@ export default function RelationshipInfo({ data }) {
           />
         </>
       )}
+
+      <div className="mt-3">
+        <Checkbox
+          checked={data.labelSide === "end"}
+          onChange={(e) => changeLabelSide(e.target.checked ? "end" : "start")}
+          disabled={layout.readOnly}
+        >
+          {t("show_label_at_end_table")}
+        </Checkbox>
+      </div>
 
       <Row gutter={6} className="my-3">
         <Col span={12}>

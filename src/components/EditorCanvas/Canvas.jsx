@@ -627,6 +627,7 @@ export default function Canvas() {
       updateConstraint: Constraint.NONE,
       deleteConstraint: Constraint.NONE,
       name: `fk_${startTableName}_${startField.name}_${endTableName}`,
+      labelSide: "start",
       id: nanoid(),
     };
     delete newRelationship.startX;

@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, useEffect } from "react";
 import { Cardinality, ObjectType, Tab } from "../../data/constants";
-import { calcPath } from "../../utils/calcPath";
+import { calcPath, calcRelationshipLabel } from "../../utils/calcPath";
 import { useDiagram, useSettings, useLayout, useSelect } from "../../hooks";
 import { useTranslation } from "react-i18next";
 import { SideSheet } from "@douyinfe/semi-ui";
@@ -37,7 +37,6 @@ export default function Relationship({ data }) {
   }, [tables, data]);
 
   const pathRef = useRef();
-  const labelRef = useRef();
 
   let cardinalityStart = "1";
   let cardinalityEnd = "1";
@@ -67,20 +66,26 @@ export default function Relationship({ data }) {
   let cardinalityEndX = 0;
   let cardinalityStartY = 0;
   let cardinalityEndY = 0;
-  let labelX = 0;
-  let labelY = 0;
 
-  let labelWidth = labelRef.current?.getBBox().width ?? 0;
-  let labelHeight = labelRef.current?.getBBox().height ?? 0;
+  const {
+    x: labelX,
+    y: labelY,
+    textAnchor: labelTextAnchor,
+    placement: labelPlacement,
+  } = pathValues
+    ? calcRelationshipLabel(
+        pathValues,
+        data.labelSide || "start",
+        settings.tableWidth,
+        1,
+        settings.showComments,
+      )
+    : { x: 0, y: 0, textAnchor: "start", placement: "above" };
 
   const cardinalityOffset = 28;
 
   if (pathRef.current) {
     const pathLength = pathRef.current.getTotalLength();
-
-    const labelPoint = pathRef.current.getPointAtLength(pathLength / 2);
-    labelX = labelPoint.x - (labelWidth ?? 0) / 2;
-    labelY = labelPoint.y + (labelHeight ?? 0) / 2;
 
     const point1 = pathRef.current.getPointAtLength(cardinalityOffset);
     cardinalityStartX = point1.x;
@@ -138,11 +143,14 @@ export default function Relationship({ data }) {
         {settings.showRelationshipLabels && (
           <text
             x={labelX}
-            y={labelY}
+            y={labelY + (labelPlacement === "above" ? -6 : 6)}
             fill={settings.mode === "dark" ? "lightgrey" : "#333"}
             fontSize={labelFontSize}
             fontWeight={500}
-            ref={labelRef}
+            textAnchor={labelTextAnchor}
+            dominantBaseline={
+              labelPlacement === "above" ? "text-after-edge" : "hanging"
+            }
             className="group-hover:fill-sky-600"
           >
             {data.name}

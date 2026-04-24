@@ -641,47 +641,27 @@ export default function Canvas() {
     addRelationship(newRelationship);
   };
 
+  // [studio-ux] scroll = zoom (dowolny modyfikator); pan przez middle-click drag
   useEventListener(
     "wheel",
     (e) => {
       e.preventDefault();
-
-      if (e.ctrlKey || e.metaKey) {
-        // How "eager" the viewport is to
-        // center the cursor's coordinates
-        const eagernessFactor = 0.05;
-        setTransform((prev) => ({
-          pan: {
-            x:
-              prev.pan.x -
-              (pointer.spaces.diagram.x - prev.pan.x) *
-                eagernessFactor *
-                Math.sign(e.deltaY),
-            y:
-              prev.pan.y -
-              (pointer.spaces.diagram.y - prev.pan.y) *
-                eagernessFactor *
-                Math.sign(e.deltaY),
-          },
-          zoom: e.deltaY <= 0 ? prev.zoom * 1.05 : prev.zoom / 1.05,
-        }));
-      } else if (e.shiftKey) {
-        setTransform((prev) => ({
-          ...prev,
-          pan: {
-            ...prev.pan,
-            x: prev.pan.x + e.deltaY / prev.zoom,
-          },
-        }));
-      } else {
-        setTransform((prev) => ({
-          ...prev,
-          pan: {
-            x: prev.pan.x + e.deltaX / prev.zoom,
-            y: prev.pan.y + e.deltaY / prev.zoom,
-          },
-        }));
-      }
+      const eagernessFactor = 0.05;
+      setTransform((prev) => ({
+        pan: {
+          x:
+            prev.pan.x -
+            (pointer.spaces.diagram.x - prev.pan.x) *
+              eagernessFactor *
+              Math.sign(e.deltaY),
+          y:
+            prev.pan.y -
+            (pointer.spaces.diagram.y - prev.pan.y) *
+              eagernessFactor *
+              Math.sign(e.deltaY),
+        },
+        zoom: e.deltaY <= 0 ? prev.zoom * 1.05 : prev.zoom / 1.05,
+      }));
     },
     canvasRef,
     { passive: false },

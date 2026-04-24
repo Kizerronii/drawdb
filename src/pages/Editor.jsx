@@ -10,6 +10,7 @@ import SaveStateContextProvider from "../context/SaveStateContext";
 import EnumsContextProvider from "../context/EnumsContext";
 import WorkSpace from "../components/Workspace";
 import { useThemedPage } from "../hooks";
+import StudioFormNav from "../studio/enhancements/StudioFormNav"; // [studio-ux]
 
 export default function Editor() {
   useThemedPage();
@@ -19,6 +20,7 @@ export default function Editor() {
       <TransformContextProvider>
         <UndoRedoContextProvider>
           <SelectContextProvider>
+            <StudioFormNav /> {/* [studio-ux] Enter zamyka panel edycji */}
             <AreasContextProvider>
               <NotesContextProvider>
                 <TypesContextProvider>

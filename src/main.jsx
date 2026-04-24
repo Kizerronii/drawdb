@@ -5,6 +5,9 @@ import App from "./App.jsx";
 import en_US from "@douyinfe/semi-ui/lib/es/locale/source/en_US";
 import "./index.css";
 import "./i18n/i18n.js";
+import { installFormNav } from "./studio/enhancements/formNav"; // [studio-ux]
+
+installFormNav(); // [studio-ux] Enter w Input/TextArea = blur (commit + wyjście)
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(

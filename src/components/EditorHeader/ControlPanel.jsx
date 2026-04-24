@@ -1346,6 +1346,30 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
           enterFullscreen();
         },
       },
+      read_only_mode: {
+        state: layout.readOnly ? (
+          <i className="bi bi-toggle-on" />
+        ) : (
+          <i className="bi bi-toggle-off" />
+        ),
+        function: () => {
+          const next = !layout.readOnly;
+          setLayout((prev) => ({ ...prev, readOnly: next }));
+          setSettings((prev) => ({ ...prev, readOnly: next }));
+        },
+      },
+      sample_data_mode: {
+        state: settings.sampleDataMode ? (
+          <i className="bi bi-toggle-on" />
+        ) : (
+          <i className="bi bi-toggle-off" />
+        ),
+        function: () =>
+          setSettings((prev) => ({
+            ...prev,
+            sampleDataMode: !prev.sampleDataMode,
+          })),
+      },
       field_details: {
         state: settings.showFieldSummary ? (
           <i className="bi bi-toggle-on" />
@@ -1762,6 +1786,57 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
             </button>
           </Tooltip>
           <Divider layout="vertical" margin="8px" />
+          <Tooltip content={t("sample_data_mode")} position="bottom">
+            <button
+              className={`py-1 px-2 hover-2 rounded-sm text-xl -mt-0.5 ${
+                settings.sampleDataMode ? "" : "opacity-70"
+              }`}
+              style={
+                settings.sampleDataMode
+                  ? {
+                      backgroundColor:
+                        settings.mode === "dark" ? "#3f3f46" : "#f4f4f5",
+                      boxShadow:
+                        "inset 0 0 0 1px " +
+                        (settings.mode === "dark" ? "#71717a" : "#a1a1aa"),
+                    }
+                  : undefined
+              }
+              onClick={() =>
+                setSettings((prev) => ({
+                  ...prev,
+                  sampleDataMode: !prev.sampleDataMode,
+                }))
+              }
+            >
+              <i className="fa-solid fa-table" />
+            </button>
+          </Tooltip>
+          <Tooltip content={t("read_only_mode")} position="bottom">
+            <button
+              className={`py-1 px-2 hover-2 rounded-sm text-xl -mt-0.5 ${
+                layout.readOnly ? "" : "opacity-70"
+              }`}
+              style={
+                layout.readOnly
+                  ? {
+                      backgroundColor:
+                        settings.mode === "dark" ? "#3f3f46" : "#f4f4f5",
+                      boxShadow:
+                        "inset 0 0 0 1px " +
+                        (settings.mode === "dark" ? "#71717a" : "#a1a1aa"),
+                    }
+                  : undefined
+              }
+              onClick={() => {
+                const next = !layout.readOnly;
+                setLayout((prev) => ({ ...prev, readOnly: next }));
+                setSettings((prev) => ({ ...prev, readOnly: next }));
+              }}
+            >
+              <i className="fa-solid fa-glasses" />
+            </button>
+          </Tooltip>
           <Tooltip content={t("theme")} position="bottom">
             <button
               className="py-1 px-2 hover-2 rounded-sm text-xl -mt-0.5"

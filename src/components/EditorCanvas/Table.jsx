@@ -24,12 +24,19 @@ import { isRtl } from "../../i18n/utils/rtl";
 import i18n from "../../i18n/i18n";
 import { getCommentHeight, getTableHeight } from "../../utils/utils";
 
+const SAMPLE_CELL_WIDTH = 80;
+const SAMPLE_CELL_HEIGHT = 30;
+const SAMPLE_HEADER_HEIGHT = 32;
+const SAMPLE_ACTION_COL_WIDTH = 32;
+
 export default function Table({
   tableData,
   onPointerDown,
   setHoveredTable,
   handleGripField,
   setLinkingLine,
+  isExpanded = false,
+  onToggleExpand = () => {},
 }) {
   const [hoveredField, setHoveredField] = useState(null);
   const { database } = useDiagram();
@@ -37,6 +44,59 @@ export default function Table({
   const { deleteTable, deleteField, updateTable } = useDiagram();
   const { settings } = useSettings();
   const { t } = useTranslation();
+  const sampleRows = tableData.sampleRows ?? [];
+  const sampleColumnWidths = tableData.sampleColumnWidths ?? {};
+  const getColumnWidth = (fieldName) =>
+    sampleColumnWidths[fieldName] ?? SAMPLE_CELL_WIDTH;
+  const totalColumnsWidth = tableData.fields.reduce(
+    (sum, f) => sum + getColumnWidth(f.name),
+    0,
+  );
+  const sampleExpandedWidth = Math.max(
+    settings.tableWidth,
+    totalColumnsWidth + SAMPLE_ACTION_COL_WIDTH + 16,
+  );
+  const sampleExpandedHeight =
+    tableHeaderHeight +
+    tableColorStripHeight +
+    SAMPLE_HEADER_HEIGHT +
+    (sampleRows.length + 1) * SAMPLE_CELL_HEIGHT +
+    16;
+
+  const updateSampleRows = (rows) =>
+    updateTable(tableData.id, { sampleRows: rows });
+  const updateCell = (rowIdx, fieldName, value) => {
+    const next = sampleRows.map((r, i) =>
+      i === rowIdx ? { ...r, [fieldName]: value } : r,
+    );
+    updateSampleRows(next);
+  };
+  const addSampleRow = () => updateSampleRows([...sampleRows, {}]);
+  const removeSampleRow = (rowIdx) =>
+    updateSampleRows(sampleRows.filter((_, i) => i !== rowIdx));
+
+  const startColumnResize = (e, fieldName) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = getColumnWidth(fieldName);
+    const onMove = (ev) => {
+      const dx = ev.clientX - startX;
+      const newW = Math.max(40, Math.round(startW + dx));
+      updateTable(tableData.id, {
+        sampleColumnWidths: {
+          ...(tableData.sampleColumnWidths ?? {}),
+          [fieldName]: newW,
+        },
+      });
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
   const {
     selectedElement,
     setSelectedElement,
@@ -110,6 +170,14 @@ export default function Table({
     }
   };
 
+  const handleDoubleClick = () => {
+    if (settings.sampleDataMode) {
+      onToggleExpand();
+      return;
+    }
+    openEditor();
+  };
+
   const openEditor = () => {
     if (!layout.sidebar) {
       setSelectedElement((prev) => ({
@@ -141,13 +209,19 @@ export default function Table({
         key={tableData.id}
         x={tableData.x}
         y={tableData.y}
-        width={settings.tableWidth}
-        height={height}
+        width={
+          settings.sampleDataMode && isExpanded
+            ? sampleExpandedWidth
+            : settings.tableWidth
+        }
+        height={
+          settings.sampleDataMode && isExpanded ? sampleExpandedHeight : height
+        }
         className="group drop-shadow-lg rounded-md cursor-move"
         onPointerDown={onPointerDown}
       >
         <div
-          onDoubleClick={openEditor}
+          onDoubleClick={handleDoubleClick}
           className={`border-2 hover:border-dashed hover:border-blue-500
                select-none rounded-lg w-full ${
                  settings.mode === "light"
@@ -171,6 +245,7 @@ export default function Table({
               <div className="px-3 overflow-hidden text-ellipsis whitespace-nowrap">
                 {tableData.name}
               </div>
+              {!layout.readOnly && (
               <div className="hidden group-hover:block">
                 <div className="flex justify-end items-center mx-2 space-x-1.5">
                   <Button
@@ -271,6 +346,7 @@ export default function Table({
                   </Popover>
                 </div>
               </div>
+              )}
             </div>
             {tableData.comment && settings.showComments && (
               <div className="text-xs px-3 line-clamp-5">
@@ -279,9 +355,11 @@ export default function Table({
             )}
           </div>
 
-          {tableData.fields.map((e, i) => {
+          {settings.sampleDataMode && renderMiniTable()}
+          {!settings.sampleDataMode &&
+            tableData.fields.map((e, i) => {
             const resolved = resolveType(database, e.type);
-            return settings.showFieldSummary ? (
+            return settings.showFieldSummary && !layout.readOnly ? (
               <Popover
                 key={i}
                 content={
@@ -379,6 +457,117 @@ export default function Table({
     </>
   );
 
+  function renderMiniTable() {
+    const cellBorder =
+      settings.mode === "light" ? "border-zinc-300" : "border-zinc-600";
+    const editable = isExpanded && !layout.readOnly;
+    return (
+      <div
+        className={isExpanded ? "overflow-visible" : "overflow-hidden"}
+        style={{
+          height: isExpanded ? "auto" : height - tableHeaderHeight - tableColorStripHeight,
+        }}
+      >
+        <table
+          className="text-xs border-collapse select-none"
+          style={{ tableLayout: "fixed" }}
+        >
+          <thead>
+            <tr>
+              {tableData.fields.map((f) => (
+                <th
+                  key={f.id}
+                  className={`relative px-2 py-1 border ${cellBorder} text-left font-semibold overflow-hidden`}
+                  style={{
+                    minWidth: getColumnWidth(f.name),
+                    width: getColumnWidth(f.name),
+                    maxWidth: getColumnWidth(f.name),
+                    height: SAMPLE_HEADER_HEIGHT,
+                  }}
+                >
+                  <span className="block truncate">{f.name}</span>
+                  <div
+                    onPointerDown={(e) => startColumnResize(e, f.name)}
+                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-sky-400/50"
+                    style={{ touchAction: "none" }}
+                  />
+                </th>
+              ))}
+              {editable && (
+                <th
+                  className={`border ${cellBorder}`}
+                  style={{ width: SAMPLE_ACTION_COL_WIDTH }}
+                />
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {sampleRows.map((row, rowIdx) => (
+              <tr key={rowIdx}>
+                {tableData.fields.map((f) => (
+                  <td
+                    key={f.id}
+                    className={`px-2 border ${cellBorder} overflow-hidden`}
+                    style={{
+                      minWidth: getColumnWidth(f.name),
+                      width: getColumnWidth(f.name),
+                      maxWidth: getColumnWidth(f.name),
+                      height: SAMPLE_CELL_HEIGHT,
+                    }}
+                  >
+                    {editable ? (
+                      <input
+                        className="w-full bg-transparent outline-none"
+                        value={row[f.name] ?? ""}
+                        onChange={(e) =>
+                          updateCell(rowIdx, f.name, e.target.value)
+                        }
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onDoubleClick={(e) => e.stopPropagation()}
+                      />
+                    ) : (
+                      <span className="block truncate">
+                        {row[f.name] ?? ""}
+                      </span>
+                    )}
+                  </td>
+                ))}
+                {editable && (
+                  <td
+                    className={`border ${cellBorder} text-center`}
+                    style={{
+                      width: SAMPLE_ACTION_COL_WIDTH,
+                      height: SAMPLE_CELL_HEIGHT,
+                    }}
+                  >
+                    <button
+                      onClick={() => removeSampleRow(rowIdx)}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      className="text-red-600 text-lg leading-none font-bold"
+                    >
+                      ×
+                    </button>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {editable && (
+          <div
+            className="mt-1 px-2"
+            onPointerDown={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
+          >
+            <Button onClick={addSampleRow} size="small" type="tertiary">
+              + {t("add_row")}
+            </Button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   function field(fieldData, index) {
     const fieldResolved = resolveType(database, fieldData.type);
     return (
@@ -459,7 +648,7 @@ export default function Table({
           </span>
         </div>
         <div className="text-zinc-400">
-          {hoveredField === index ? (
+          {hoveredField === index && !layout.readOnly ? (
             <Button
               theme="solid"
               size="small"
@@ -473,30 +662,36 @@ export default function Table({
                 deleteField(fieldData, tableData.id);
               }}
             />
-          ) : settings.showDataTypes ? (
+          ) : (
             <div className="flex gap-1 items-center">
               {fieldData.primary && <IconKeyStroked />}
-              {!fieldData.notNull && <span className="font-mono">?</span>}
-              <span
-                className={
-                  "font-mono " +
-                  (fieldResolved.isCustom ? "" : fieldResolved.color)
-                }
-                style={
-                  fieldResolved.isCustom
-                    ? { color: fieldResolved.color }
-                    : {}
-                }
-              >
-                {fieldData.type +
-                  ((fieldResolved.isSized || fieldResolved.hasPrecision) &&
-                  fieldData.size &&
-                  fieldData.size !== ""
-                    ? `(${fieldData.size})`
-                    : "")}
-              </span>
+              {settings.showDataTypes && (
+                <>
+                  {!fieldData.notNull && (
+                    <span className="font-mono">?</span>
+                  )}
+                  <span
+                    className={
+                      "font-mono " +
+                      (fieldResolved.isCustom ? "" : fieldResolved.color)
+                    }
+                    style={
+                      fieldResolved.isCustom
+                        ? { color: fieldResolved.color }
+                        : {}
+                    }
+                  >
+                    {fieldData.type +
+                      ((fieldResolved.isSized || fieldResolved.hasPrecision) &&
+                      fieldData.size &&
+                      fieldData.size !== ""
+                        ? `(${fieldData.size})`
+                        : "")}
+                  </span>
+                </>
+              )}
             </div>
-          ) : null}
+          )}
         </div>
       </div>
     );

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Action,
   Cardinality,
@@ -84,6 +84,10 @@ export default function Canvas() {
     panStart: { x: 0, y: 0 },
     cursorStart: { x: 0, y: 0 },
   });
+  const [expandedTableId, setExpandedTableId] = useState(null);
+  useEffect(() => {
+    if (!settings.sampleDataMode) setExpandedTableId(null);
+  }, [settings.sampleDataMode]);
   const [areaResize, setAreaResize] = useState({ id: -1, dir: "none" });
   const [areaInitDimensions, setAreaInitDimensions] = useState({
     x: 0,
@@ -748,13 +752,25 @@ export default function Canvas() {
           {relationships.map((e) => (
             <Relationship key={e.id} data={e} />
           ))}
-          {tables.map((table) => (
+          {(expandedTableId
+            ? [
+                ...tables.filter((t) => t.id !== expandedTableId),
+                ...tables.filter((t) => t.id === expandedTableId),
+              ]
+            : tables
+          ).map((table) => (
             <Table
               key={table.id}
               tableData={table}
               setHoveredTable={setHoveredTable}
               handleGripField={handleGripField}
               setLinkingLine={setLinkingLine}
+              isExpanded={expandedTableId === table.id}
+              onToggleExpand={() =>
+                setExpandedTableId((prev) =>
+                  prev === table.id ? null : table.id,
+                )
+              }
               onPointerDown={() => {
                 elementPointerDown = {
                   element: table,

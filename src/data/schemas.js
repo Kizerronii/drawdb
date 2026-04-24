@@ -60,6 +60,13 @@ export const tableSchema = {
       type: "array",
       items: { type: ["string"] },
     },
+    sampleRows: {
+      type: "array",
+      items: { type: "object" },
+    },
+    sampleColumnWidths: {
+      type: "object",
+    },
   },
   required: ["id", "name", "x", "y", "fields", "comment", "indices", "color"],
 };

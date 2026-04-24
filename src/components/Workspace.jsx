@@ -421,7 +421,7 @@ export default function WorkSpace() {
 
   const returnToCurrentDiagram = async () => {
     await load();
-    setLayout((prev) => ({ ...prev, readOnly: false }));
+    setLayout((prev) => ({ ...prev, readOnly: settings.readOnly === true }));
     setVersion(null);
   };
 
@@ -582,7 +582,7 @@ export default function WorkSpace() {
         okText={t("continue")}
         cancelText={t("cancel")}
         onOk={() => {
-          setLayout((prev) => ({ ...prev, readOnly: false }));
+          setLayout((prev) => ({ ...prev, readOnly: settings.readOnly === true }));
           setShowRestoreModal(false);
           setVersion(null);
         }}

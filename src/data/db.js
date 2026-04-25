@@ -21,6 +21,14 @@ db.version(67)
     });
   });
 
+// v68 (studio fork): dodanie recentFiles dla FSA mode (file handles persisted w IndexedDB).
+// Tabela jest dostępna we wszystkich trybach, ale używana tylko gdy STUDIO_MODE + STORAGE_MODE=fsa.
+db.version(68).stores({
+  diagrams: "++id, lastModified, loadedFromGistId, diagramId",
+  templates: "++id, custom, templateId",
+  recentFiles: "++id, lastOpened",
+});
+
 db.on("populate", (transaction) => {
   transaction.templates.bulkAdd(templateSeeds).catch((e) => console.log(e));
 });

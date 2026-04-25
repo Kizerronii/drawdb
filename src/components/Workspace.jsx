@@ -221,7 +221,14 @@ export default function WorkSpace() {
     const loadDiagram = async (id) => {
       const diagram = await db.diagrams.where("diagramId").equals(id).first();
 
-      if (!diagram) return;
+      if (!diagram) {
+        // FSA: sessionId z URL nie istnieje (po reload F5 in-memory map jest pusta).
+        // Wracaj do Launchera, gdzie user może otworzyć z recent.
+        if (isFSAMode()) {
+          navigate("/", { replace: true });
+        }
+        return;
+      }
 
       if (diagram.database) {
         setDatabase(diagram.database);
@@ -481,6 +488,28 @@ export default function WorkSpace() {
 
     load();
   }, [load]);
+
+  // FSA: ostrzeż przed zamknięciem taba/zamknięciem okna jeśli session ma niezapisane
+  // zmiany (dirty=true lub no handle ale tables/areas/notes niepuste).
+  useEffect(() => {
+    if (!isFSAMode()) return;
+    const handler = (e) => {
+      const session = fsaSessions.get(loadedDiagramId);
+      const hasContent =
+        (tables?.length ?? 0) +
+          (areas?.length ?? 0) +
+          (notes?.length ?? 0) +
+          (types?.length ?? 0) >
+        0;
+      const isDirty = session?.dirty || (!session?.handle && hasContent);
+      if (!isDirty) return;
+      e.preventDefault();
+      // Chromium używa returnValue, message nie jest pokazywany (security).
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [loadedDiagramId, tables, areas, notes, types]);
 
   return (
     <div className="h-full flex flex-col overflow-hidden theme">

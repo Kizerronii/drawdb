@@ -8,6 +8,7 @@ import {
   Empty,
   Toast,
   Spin,
+  Banner,
 } from "@douyinfe/semi-ui";
 import {
   IconPlus,
@@ -190,6 +191,25 @@ export default function Launcher() {
           <IconGithubLogo size="large" />
         </a>
       </header>
+
+      {/* Banner gdy FSA niedostępne (np. Firefox) */}
+      {fsaMode && !isFSASupported() && (
+        <Banner
+          fullMode={false}
+          type="warning"
+          icon={null}
+          closeIcon={null}
+          description={
+            <div className="text-sm">
+              Twoja przeglądarka nie obsługuje File System Access API. Otwieranie
+              i zapisywanie plików nie zadziała. Użyj{" "}
+              <strong>Chromium</strong>, <strong>Chrome</strong> lub{" "}
+              <strong>Edge</strong>, najlepiej przez{" "}
+              <code>drawdb launch</code> (app mode).
+            </div>
+          }
+        />
+      )}
 
       {/* Body: 2 columns */}
       <div className="flex-1 flex overflow-hidden">

@@ -47,34 +47,56 @@ _wait_for() {
     return 1
 }
 
+_has_api_flag() {
+    for arg in "$@"; do
+        [[ "$arg" == "--api" ]] && return 0
+    done
+    return 1
+}
+
 cmd_up() {
-    _ensure_workspace
-    echo "→ Uruchamianie drawdb (prod, port $PORT_PROD) + api (port $PORT_API)..."
-    "${COMPOSE[@]}" up -d drawdb drawdb-api
-    echo "   $URL_PROD"
-    echo "   $URL_API/api/health"
+    if _has_api_flag "$@"; then
+        _ensure_workspace
+        echo "→ Uruchamianie drawdb (prod, port $PORT_PROD) + api (port $PORT_API, profile api)..."
+        "${COMPOSE[@]}" --profile api up -d drawdb drawdb-api
+        echo "   $URL_PROD"
+        echo "   $URL_API/api/health"
+    else
+        echo "→ Uruchamianie drawdb (prod, port $PORT_PROD, FSA storage)..."
+        "${COMPOSE[@]}" up -d drawdb
+        echo "   $URL_PROD"
+        echo "   storage: File System Access API (frontend → dysk bezpośrednio)"
+    fi
 }
 
 cmd_dev() {
-    _ensure_workspace
-    echo "→ Uruchamianie drawdb (dev, port $PORT_DEV, hot-reload) + api (port $PORT_API)..."
-    "${COMPOSE[@]}" --profile dev up -d drawdb-dev drawdb-api
-    echo "   $URL_DEV"
-    echo "   $URL_API/api/health"
+    if _has_api_flag "$@"; then
+        _ensure_workspace
+        echo "→ Uruchamianie drawdb (dev, port $PORT_DEV, hot-reload) + api (port $PORT_API, profile api)..."
+        "${COMPOSE[@]}" --profile dev --profile api up -d drawdb-dev drawdb-api
+        echo "   $URL_DEV"
+        echo "   $URL_API/api/health"
+    else
+        echo "→ Uruchamianie drawdb (dev, port $PORT_DEV, hot-reload, FSA storage)..."
+        "${COMPOSE[@]}" --profile dev up -d drawdb-dev
+        echo "   $URL_DEV"
+        echo "   storage: File System Access API (frontend → dysk bezpośrednio)"
+    fi
 }
 
 cmd_down() {
     echo "→ Zatrzymywanie drawdb..."
-    "${COMPOSE[@]}" --profile dev down
+    "${COMPOSE[@]}" --profile dev --profile api down
 }
 
 cmd_restart() {
     local mode="${1:-prod}"
+    shift || true
     cmd_down
     if [[ "$mode" == "dev" ]]; then
-        cmd_dev
+        cmd_dev "$@"
     else
-        cmd_up
+        cmd_up "$@"
     fi
 }
 
@@ -200,10 +222,13 @@ drawdb — CLI do zarządzania lokalną instancją drawdb (studio)
 Użycie: drawdb <komenda> [args]
 
 Komendy:
-  up                 Uruchom drawdb (prod, port $PORT_PROD) + api (port $PORT_API)
-  dev                Uruchom drawdb (dev, port $PORT_DEV, hot-reload) + api (port $PORT_API)
+  up [--api]         Uruchom drawdb (prod, port $PORT_PROD).
+                     --api: dorzuć kontener REST (port $PORT_API, legacy/MCP).
+  dev [--api]        Uruchom drawdb (dev, port $PORT_DEV, hot-reload).
+                     --api: jw.
   down               Zatrzymaj drawdb (wszystkie kontenery)
-  restart [dev]      Restart (domyślnie prod, 'dev' uruchamia dev mode)
+  restart [dev] [--api]
+                     Restart (domyślnie prod, 'dev' uruchamia dev mode).
   launch [dev] [--keep-terminal]
                      Uruchom drawdb w Chromium app mode (bez UI przeglądarki) +
                      zamknij okno terminala (efekt "podmianki"). --keep-terminal pomija zamknięcie.
@@ -215,7 +240,10 @@ Komendy:
   sh [name]          Shell w kontenerze (drawdb | drawdb-dev | drawdb-api)
   help               Ta pomoc
 
-Workspace projektów:  $WORKSPACE
+Storage:              File System Access API (default).
+                      Pliki *.drawdb.json zapisywane w dowolnym miejscu — wybiera
+                      user przez Save As. Apka pamięta ostatnio otwarte (recent).
+                      --api używa REST + workspace folder ($WORKSPACE, legacy/MCP).
 Tool dir:             $TOOL_DIR
 Compose file:         $COMPOSE_FILE
 EOF
@@ -223,7 +251,7 @@ EOF
 
 case "${1:-help}" in
     up|dev|down|status|open|help|sh) cmd_"$1" "${@:2}" ;;
-    restart) cmd_restart "${2:-prod}" ;;
+    restart) cmd_restart "${@:2}" ;;
     launch)  cmd_launch "${@:2}" ;;
     logs)    cmd_logs "${@:2}" ;;
     rebuild) cmd_rebuild ;;

@@ -13,8 +13,6 @@ services:
     restart: unless-stopped
     ports:
       - "3000:80"
-    depends_on:
-      - drawdb-api
 
   # Dev mode: vite dev server z hot-reload na porcie 5173.
   # Uruchomienie: drawdb dev
@@ -30,11 +28,12 @@ services:
       - "5173:5173"
     profiles:
       - dev
-    depends_on:
-      - drawdb-api
 
   # Backend filesystem storage — REST + SSE nad ~/drawdb-projects/*.drawdb.json.
-  # Uruchamia się automatycznie przy 'drawdb up' i 'drawdb dev'.
+  # LEGACY w trybie FSA (default): uruchamiany OPT-IN przez 'drawdb up --api' lub
+  # 'docker compose --profile api up' — np. dla przyszłego trybu MCP server.
+  # W FSA mode frontend rozmawia z dyskiem bezpośrednio (showOpenFilePicker), API
+  # nie jest potrzebne.
   drawdb-api:
     build:
       context: ./studio/api
@@ -49,3 +48,5 @@ services:
       LOG_LEVEL: info
     ports:
       - "3001:3001"
+    profiles:
+      - api

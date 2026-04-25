@@ -34,11 +34,20 @@ db.on("populate", (transaction) => {
 });
 
 // === STUDIO MODE === (poza upstream — patrz studio/api, src/studio/)
-// Zastępuje db.diagrams HTTP-backed adapterem nad ~/drawdb-projects/*.drawdb.json.
+// Zastępuje db.diagrams adapterem zgodnym z trybem storage:
+//   STORAGE_MODE=fsa (default) → File System Access API (frontend → dysk bezpośrednio)
+//   STORAGE_MODE=api           → REST do studio kontenera (legacy, dla MCP)
 // db.templates zostaje w Dexie (statyczne seedy).
-// Statyczny import: gdy VITE_STUDIO_MODE !== 'true', Vite tree-shake'uje całość
+// db.recentFiles zostaje w Dexie (persistowane handle FSA).
+// Statyczne importy: gdy VITE_STUDIO_MODE !== 'true', Vite tree-shake'uje całość
 // (define inlines flag → if(false) → dead code elimination).
-import { makeDiagramsAdapter } from "../studio/storage-adapter";
+import { makeDiagramsAdapter as makeApiAdapter } from "../studio/storage-adapter";
+import { makeDiagramsAdapter as makeFsaAdapter } from "../studio/fsa-adapter";
 if (import.meta.env.VITE_STUDIO_MODE === "true") {
-  db.diagrams = makeDiagramsAdapter();
+  const storageMode = import.meta.env.VITE_STORAGE_MODE || "fsa";
+  if (storageMode === "api") {
+    db.diagrams = makeApiAdapter();
+  } else {
+    db.diagrams = makeFsaAdapter();
+  }
 }

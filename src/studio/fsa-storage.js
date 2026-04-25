@@ -25,9 +25,9 @@ class Sessions {
     this.map = new Map();
   }
 
-  create({ handle = null, name = "Untitled", database = "generic", data = null } = {}) {
-    const sessionId = crypto.randomUUID();
-    this.map.set(sessionId, {
+  create({ sessionId, handle = null, name = "Untitled", database = "generic", data = null } = {}) {
+    const id = sessionId ?? crypto.randomUUID();
+    this.map.set(id, {
       handle,
       name,
       database,
@@ -35,7 +35,7 @@ class Sessions {
       lastSavedAt: handle ? new Date() : null,
       data,
     });
-    return sessionId;
+    return id;
   }
 
   get(sessionId) {

@@ -86,6 +86,16 @@ import { deleteFromCache, STORAGE_KEY } from "../../utils/cache";
 import { useLiveQuery } from "dexie-react-hooks";
 import { DateTime } from "luxon";
 import ConfigureCustomTypes from "./ConfigureCustomTypes";
+import {
+  isFSAMode,
+  isFSASupported,
+  fsaSessions,
+  openFile as fsaOpenFile,
+  saveFileAs as fsaSaveFileAs,
+  openFromHandle,
+  writeSession,
+} from "../../studio/fsa-storage";
+import { listRecent, removeRecent } from "../../studio/recent-files";
 
 export default function ControlPanel({ title, setTitle, lastSaved }) {
   const { id: diagramId } = useParams();
@@ -748,13 +758,106 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
   const toggleDBMLEditor = () => {
     setLayout((prev) => ({ ...prev, dbmlEditor: !prev.dbmlEditor }));
   };
-  const save = () => setSaveState(State.SAVING);
+  // FSA: składa snapshot bieżącego diagramu do zapisu na dysk.
+  const buildFSAData = () => ({
+    diagramId,
+    database,
+    name: title,
+    tables,
+    references: relationships,
+    notes,
+    areas,
+    pan: transform.pan,
+    zoom: transform.zoom,
+    ...(databases[database].hasEnums && { enums }),
+    ...(databases[database].hasTypes && { types }),
+    lastModified: new Date(),
+  });
+
+  const save = async () => {
+    if (isFSAMode()) {
+      const session = fsaSessions.get(diagramId);
+      const data = buildFSAData();
+      try {
+        if (session?.handle) {
+          setSaveState(State.SAVING);
+          await writeSession(diagramId, data);
+          setSaveState(State.SAVED);
+        } else {
+          // pierwszy save dla untitled — pokaż showSaveFilePicker
+          const result = await fsaSaveFileAs(diagramId, data);
+          if (result) {
+            setSaveState(State.SAVED);
+            Toast.success(`Zapisano: ${result.handle.name}`);
+          }
+        }
+      } catch (err) {
+        setSaveState(State.ERROR);
+        Toast.error(`Błąd zapisu: ${err.message}`);
+      }
+      return;
+    }
+    setSaveState(State.SAVING);
+  };
+
   const recentlyOpenedDiagrams = useLiveQuery(() =>
-    db.diagrams.orderBy("lastModified").reverse().limit(10).toArray(),
+    isFSAMode()
+      ? listRecent(10)
+      : db.diagrams.orderBy("lastModified").reverse().limit(10).toArray(),
   );
 
-  const open = () => setModal(MODAL.OPEN);
-  const saveDiagramAs = () => setModal(MODAL.SAVEAS);
+  const open = async () => {
+    if (isFSAMode()) {
+      if (!isFSASupported()) {
+        Toast.error("Wymagana przeglądarka Chromium (File System Access API).");
+        return;
+      }
+      try {
+        const result = await fsaOpenFile();
+        if (!result) return;
+        navigate(`/editor/diagrams/${result.sessionId}`);
+      } catch (err) {
+        Toast.error(`Błąd otwarcia: ${err.message}`);
+      }
+      return;
+    }
+    setModal(MODAL.OPEN);
+  };
+
+  const saveDiagramAs = async () => {
+    if (isFSAMode()) {
+      try {
+        const result = await fsaSaveFileAs(diagramId, buildFSAData());
+        if (result) {
+          setSaveState(State.SAVED);
+          Toast.success(`Zapisano: ${result.handle.name}`);
+        }
+      } catch (err) {
+        Toast.error(`Błąd: ${err.message}`);
+      }
+      return;
+    }
+    setModal(MODAL.SAVEAS);
+  };
+
+  // FSA: klik na recent w File menu — wymaga user gesture dla requestPermission.
+  const openRecentFSA = async (entry) => {
+    try {
+      const result = await openFromHandle(entry.handle);
+      if (!result) {
+        Toast.warning("Brak uprawnień — kliknij ponownie i zaakceptuj prompt.");
+        return;
+      }
+      navigate(`/editor/diagrams/${result.sessionId}`);
+    } catch (err) {
+      if (err?.name === "NotFoundError") {
+        Toast.warning(`Plik "${entry.fileName}" nie istnieje na dysku.`);
+        await removeRecent(entry.id);
+        return;
+      }
+      Toast.error(`Błąd: ${err.message}`);
+    }
+  };
   const fullscreen = useFullscreen();
 
   const menu = {
@@ -773,13 +876,19 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
         children: [
           ...(recentlyOpenedDiagrams && recentlyOpenedDiagrams.length > 0
             ? [
-                ...recentlyOpenedDiagrams.map((diagram) => ({
-                  name: diagram.name,
-                  label: DateTime.fromJSDate(new Date(diagram.lastModified))
+                ...recentlyOpenedDiagrams.map((entry) => ({
+                  name: entry.name,
+                  label: DateTime.fromJSDate(
+                    new Date(isFSAMode() ? entry.lastOpened : entry.lastModified),
+                  )
                     .setLocale(i18n.language)
                     .toRelative(),
                   function: () => {
-                    navigate(`/editor/diagrams/${diagram.diagramId}`);
+                    if (isFSAMode()) {
+                      openRecentFSA(entry);
+                    } else {
+                      navigate(`/editor/diagrams/${entry.diagramId}`);
+                    }
                   },
                 })),
                 { divider: true },
@@ -1924,7 +2033,15 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
                 }}
                 onClick={!layout.readOnly && (() => setModal(MODAL.RENAME))}
               >
-                <span>{(isTemplate ? "Templates/" : "Diagrams/") + title}</span>
+                <span>
+                  {isFSAMode()
+                    ? `${title}${
+                        fsaSessions.get(diagramId)?.handle
+                          ? ""
+                          : " (Untitled)"
+                      }`
+                    : (isTemplate ? "Templates/" : "Diagrams/") + title}
+                </span>
                 {version && (
                   <Tag className="mt-1" color="blue" size="small">
                     {version.substring(0, 7)}

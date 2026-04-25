@@ -21,6 +21,13 @@ import { DB } from "../data/constants";
 import { useSettings } from "../hooks";
 import Thumbnail from "../components/Thumbnail";
 import { Tag } from "@douyinfe/semi-ui";
+import {
+  isFSAMode,
+  isFSASupported,
+  openFile as fsaOpenFile,
+  openFromHandle,
+} from "./fsa-storage";
+import { listRecent, removeRecent } from "./recent-files";
 
 const BLANK_DIAGRAM = {
   tables: [],
@@ -48,7 +55,14 @@ function relativeTime(date) {
 export default function Launcher() {
   const navigate = useNavigate();
   const { settings } = useSettings();
-  const projects = useLiveQuery(() => db.diagrams.toArray(), [], []);
+  // FSA mode → recent files persistowane w db.recentFiles (handle + metadata).
+  // Legacy api mode → lista projektów z db.diagrams.
+  const fsaMode = isFSAMode();
+  const projects = useLiveQuery(
+    () => (fsaMode ? listRecent(50) : db.diagrams.toArray()),
+    [fsaMode],
+    [],
+  );
   const templates = useLiveQuery(() => db.templates.toArray(), [], []);
 
   const [creating, setCreating] = useState(false);
@@ -79,6 +93,43 @@ export default function Launcher() {
       Toast.error(err.message);
     } finally {
       setCreating(false);
+    }
+  };
+
+  // FSA: otwarcie dowolnego pliku z dysku przez file picker (showOpenFilePicker).
+  const handleOpenFile = async () => {
+    if (!isFSASupported()) {
+      Toast.error("Wymagana przeglądarka Chromium (File System Access API).");
+      return;
+    }
+    try {
+      const result = await fsaOpenFile();
+      if (!result) return; // user anulował
+      navigate(`/editor/diagrams/${result.sessionId}`);
+    } catch (err) {
+      Toast.error(`Błąd otwarcia: ${err.message}`);
+    }
+  };
+
+  // FSA: otwarcie z recent — wymaga user gesture dla requestPermission, dlatego tu.
+  const openRecent = async (entry) => {
+    try {
+      const result = await openFromHandle(entry.handle);
+      if (!result) {
+        Toast.warning(
+          "Brak uprawnień do pliku — kliknij ponownie i zaakceptuj prompt przeglądarki.",
+        );
+        return;
+      }
+      navigate(`/editor/diagrams/${result.sessionId}`);
+    } catch (err) {
+      // NotFoundError = plik usunięty z dysku
+      if (err?.name === "NotFoundError") {
+        Toast.warning(`Plik "${entry.fileName}" nie istnieje na dysku.`);
+        await removeRecent(entry.id);
+        return;
+      }
+      Toast.error(`Błąd: ${err.message}`);
     }
   };
 
@@ -123,7 +174,9 @@ export default function Launcher() {
           <div>
             <div className="text-lg font-semibold">drawDB studio</div>
             <div className="text-xs text-zinc-500">
-              workspace: ~/drawdb-projects
+              {fsaMode
+                ? "pliki: dowolna lokalizacja na dysku"
+                : "workspace: ~/drawdb-projects"}
             </div>
           </div>
         </div>
@@ -170,10 +223,30 @@ export default function Launcher() {
           >
             Z szablonu
           </Button>
+          {fsaMode && (
+            <Button
+              icon={<IconFile />}
+              onClick={handleOpenFile}
+              block
+              size="large"
+              className="!justify-start"
+            >
+              Otwórz plik…
+            </Button>
+          )}
 
           <div className="mt-auto pt-4 border-t border-zinc-200 dark:border-zinc-800 text-xs text-zinc-500 space-y-1">
-            <div>Pliki: <code>~/drawdb-projects/*.drawdb.json</code></div>
-            <div>API: <code>localhost:3001</code></div>
+            {fsaMode ? (
+              <>
+                <div>Storage: File System Access API</div>
+                <div>Każdy diagram = jeden plik <code>*.drawdb.json</code></div>
+              </>
+            ) : (
+              <>
+                <div>Pliki: <code>~/drawdb-projects/*.drawdb.json</code></div>
+                <div>API: <code>localhost:3001</code></div>
+              </>
+            )}
           </div>
         </aside>
 
@@ -192,15 +265,54 @@ export default function Launcher() {
             </div>
           ) : projects.length === 0 ? (
             <Empty
-              title="Brak projektów"
+              title={fsaMode ? "Brak ostatnio otwartych" : "Brak projektów"}
               description={
                 <div className="text-sm text-zinc-500">
-                  Zacznij od pustego diagramu lub wybierz szablon.
-                  <br />
-                  Pliki będą zapisywane w <code>~/drawdb-projects/</code>.
+                  {fsaMode ? (
+                    <>
+                      Stwórz nowy diagram lub otwórz istniejący plik{" "}
+                      <code>*.drawdb.json</code>.
+                    </>
+                  ) : (
+                    <>
+                      Zacznij od pustego diagramu lub wybierz szablon.
+                      <br />
+                      Pliki będą zapisywane w <code>~/drawdb-projects/</code>.
+                    </>
+                  )}
                 </div>
               }
             />
+          ) : fsaMode ? (
+            <div className="grid gap-2">
+              {[...projects]
+                .sort(
+                  (a, b) => new Date(b.lastOpened) - new Date(a.lastOpened),
+                )
+                .map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => openRecent(p)}
+                    className={`text-left flex items-center gap-3 p-3 rounded-lg border transition-colors ${
+                      settings.mode === "dark"
+                        ? "border-zinc-800 hover:bg-zinc-800/50"
+                        : "border-zinc-200 hover:bg-white"
+                    }`}
+                  >
+                    <IconFile size="extra-large" className="text-zinc-400" />
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium truncate">{p.name}</div>
+                      <div className="text-xs text-zinc-500">
+                        {relativeTime(p.lastOpened)} ·{" "}
+                        {databases[p.database]?.name ?? "Generic"}
+                      </div>
+                    </div>
+                    <code className="text-xs text-zinc-400 hidden md:inline">
+                      {p.fileName}
+                    </code>
+                  </button>
+                ))}
+            </div>
           ) : (
             <div className="grid gap-2">
               {[...projects]
@@ -253,11 +365,11 @@ export default function Launcher() {
       >
         <div className="space-y-4">
           <div>
-            <div className="text-sm mb-1">Nazwa projektu (zostanie nazwą pliku):</div>
+            <div className="text-sm mb-1">Nazwa projektu:</div>
             <Input
               value={newName}
               onChange={setNewName}
-              placeholder="np. blog-db, my-project"
+              placeholder="np. Blog DB, Surf Manager"
               autoFocus
               onEnterPress={() => {
                 if (creating) return;
@@ -266,7 +378,12 @@ export default function Launcher() {
               }}
             />
             <div className="text-xs text-zinc-500 mt-1">
-              Plik: <code>~/drawdb-projects/&lt;slug&gt;.drawdb.json</code>
+              {fsaMode
+                ? "Lokalizację pliku wybierzesz przy pierwszym zapisie (Ctrl+S)."
+                : "Plik: "}
+              {!fsaMode && (
+                <code>~/drawdb-projects/&lt;slug&gt;.drawdb.json</code>
+              )}
             </div>
           </div>
 

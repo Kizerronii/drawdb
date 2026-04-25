@@ -9,6 +9,11 @@
 // dedup po handle.isSameEntry() — porównanie po identyczności zasobu, nie po stringu.
 
 import { db } from "../data/db";
+import { studioEvents } from "./api-client";
+
+function emit() {
+  studioEvents._dispatch("local", { data: null });
+}
 
 // Upsert: jeśli istnieje wpis dla tego samego pliku, podmień metadata + lastOpened.
 // W przeciwnym razie dodaj nowy.
@@ -24,19 +29,22 @@ export async function addOrUpdateRecent({ handle, name, database }) {
           lastOpened: new Date(),
           database: database ?? entry.database,
         });
+        emit();
         return entry.id;
       }
     } catch {
       // isSameEntry rzuca jeśli handle stale (np. plik usunięty); pomiń ten wpis
     }
   }
-  return await db.recentFiles.add({
+  const id = await db.recentFiles.add({
     handle,
     name: name ?? handle.name.replace(/\.drawdb\.json$/i, ""),
     fileName: handle.name,
     lastOpened: new Date(),
     database: database ?? "generic",
   });
+  emit();
+  return id;
 }
 
 export async function listRecent(limit = 10) {
@@ -45,6 +53,7 @@ export async function listRecent(limit = 10) {
 
 export async function removeRecent(id) {
   await db.recentFiles.delete(id);
+  emit();
 }
 
 // queryPermission + opcjonalnie requestPermission. Wymaga user gesture dla request.

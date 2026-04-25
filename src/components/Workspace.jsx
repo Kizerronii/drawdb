@@ -32,6 +32,7 @@ import {
 import { get, SHARE_FILENAME } from "../api/gists";
 import { nanoid } from "nanoid";
 import { mergeCustomTypes } from "../utils/customTypes";
+import { isFSAMode, fsaSessions } from "../studio/fsa-storage";
 
 export const IdContext = createContext({
   gistId: "",
@@ -385,6 +386,13 @@ export default function WorkSpace() {
     }
 
     if (!loadedDiagramId) {
+      // FSA: brak sesji bez sessionId w URL — wracaj do Launchera (entry point).
+      // loadLatestDiagram nie ma sensu, bo recent files wymagają user gesture
+      // (requestPermission) — Launcher to obsługuje.
+      if (isFSAMode()) {
+        navigate("/", { replace: true });
+        return;
+      }
       await loadLatestDiagram();
       return;
     }
@@ -435,12 +443,20 @@ export default function WorkSpace() {
       return;
 
     if (settings.autosave) {
+      // FSA: untitled session (brak handle na dysku) → nie autosave'uj automatycznie.
+      // User musi zrobić Save As (file picker wymaga user gesture). Badge pokaże
+      // SAVED jako "stan komponentu spójny" — title bar i tak wyświetli "Untitled ●".
+      if (isFSAMode() && !fsaSessions.get(loadedDiagramId)?.handle) {
+        setSaveState(State.SAVED);
+        return;
+      }
       setSaveState(State.SAVING);
     }
   }, [
     undoStack,
     redoStack,
     settings.autosave,
+    loadedDiagramId,
     tables?.length,
     areas?.length,
     notes?.length,

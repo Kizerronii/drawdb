@@ -83,6 +83,15 @@ export function isFSASupported() {
   return typeof window !== "undefined" && "showOpenFilePicker" in window;
 }
 
+// True jeśli aplikacja działa w trybie studio + storage=fsa (default w studio).
+// Tryb wybierany przez Vite env, statyczny per build.
+export function isFSAMode() {
+  return (
+    import.meta.env.VITE_STUDIO_MODE === "true" &&
+    (import.meta.env.VITE_STORAGE_MODE || "fsa") === "fsa"
+  );
+}
+
 // Otwiera dialog wyboru pliku, czyta jego zawartość i tworzy session.
 // Zwraca: { sessionId, data } albo null jeśli user anulował.
 export async function openFile() {
